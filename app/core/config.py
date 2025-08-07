@@ -54,6 +54,14 @@ class Settings(BaseSettings):
         description="Log format string"
     )
     
+    @field_validator("allowed_extensions", mode='before')
+    @classmethod
+    def validate_allowed_extensions(cls, v):
+        """Allow comma-separated string for extensions."""
+        if isinstance(v, str):
+            return [ext.strip() for ext in v.split(',')]
+        return v
+
     @field_validator("model_size")
     @classmethod
     def validate_model_size(cls, v):

@@ -127,13 +127,8 @@ class TranscriptionService:
         
         # Check file extension
         file_extension = audio_file.filename.lower().split('.')[-1]
-        
-        allowed_extensions = self._settings.allowed_extensions
-        if isinstance(allowed_extensions, str):
-            allowed_extensions = [ext.strip() for ext in allowed_extensions.split(',')]
-
-        if file_extension not in allowed_extensions:
-            allowed = ", ".join(allowed_extensions)
+        if file_extension not in self._settings.parsed_allowed_extensions:
+            allowed = ", ".join(self._settings.parsed_allowed_extensions)
             raise FileValidationException(
                 f"File extension '{file_extension}' not allowed. "
                 f"Supported formats: {allowed}"

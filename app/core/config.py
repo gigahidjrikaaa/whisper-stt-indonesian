@@ -38,9 +38,9 @@ class Settings(BaseSettings):
     
     # File upload settings
     max_file_size_mb: int = Field(default=50, description="Maximum file size in MB")
-    allowed_extensions: list[str] = Field(
-        default=["mp3", "wav", "m4a", "flac", "ogg", "wma", "aac"],
-        description="Allowed audio file extensions"
+    allowed_extensions: str = Field(
+        default="mp3,wav,m4a,flac,ogg,wma,aac",
+        description="Comma-separated string of allowed audio file extensions"
     )
     
     # Performance settings
@@ -54,13 +54,7 @@ class Settings(BaseSettings):
         description="Log format string"
     )
     
-    @field_validator("allowed_extensions", mode='before')
-    @classmethod
-    def validate_allowed_extensions(cls, v):
-        """Allow comma-separated string for extensions."""
-        if isinstance(v, str):
-            return [ext.strip() for ext in v.split(',')]
-        return v
+
 
     @field_validator("model_size")
     @classmethod
@@ -88,6 +82,11 @@ class Settings(BaseSettings):
             raise ValueError("Max file size must be between 1 and 1000 MB")
         return v
     
+    @property
+    def parsed_allowed_extensions(self) -> list[str]:
+        """Return a list of allowed extensions from the comma-separated string."""
+        return [ext.strip() for ext in self.allowed_extensions.split(',')]
+
     @property
     def max_file_size_bytes(self) -> int:
         """Convert max file size from MB to bytes."""

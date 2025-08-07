@@ -1,10 +1,11 @@
-# Use NVIDIA CUDA base image for GPU support
-FROM nvidia/cuda:12.2.0-runtime-ubuntu22.04
+# Use NVIDIA CUDA base image with cuDNN for GPU support
+FROM nvidia/cuda:12.2.2-cudnn9-runtime-ubuntu22.04
 
 # Set environment variables
 ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
-    DEBIAN_FRONTEND=noninteractive
+    DEBIAN_FRONTEND=noninteractive \
+    LD_LIBRARY_PATH=/usr/local/nvidia/lib:/usr/local/nvidia/lib64
 
 # Install system dependencies
 RUN apt-get update && apt-get install -y \

@@ -9,7 +9,7 @@ all configuration values.
 import os
 from typing import Literal, Optional
 
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, Field, field_validator, model_validator
 from pydantic_settings import BaseSettings
 
 
@@ -81,6 +81,16 @@ class Settings(BaseSettings):
         if v <= 0 or v > 1000:  # Max 1GB
             raise ValueError("Max file size must be between 1 and 1000 MB")
         return v
+    
+    @model_validator(mode='after')
+    def validate_device_and_compute_type(self) -> 'Settings':
+        """Validate that compute_type is compatible with the selected device."""
+        if self.device == "cpu" and self.compute_type in ["float16", "int8_float16"]:
+            raise ValueError(
+                f"Compute type '{self.compute_type}' is not supported on CPU. "
+                "Consider using 'float32' or 'int8'."
+            )
+        return self
     
     @property
     def parsed_allowed_extensions(self) -> list[str]:

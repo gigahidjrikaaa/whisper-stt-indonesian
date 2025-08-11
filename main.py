@@ -6,7 +6,7 @@ necessary middleware, routers, exception handlers, and startup events.
 It serves as the production-ready entry point for the STT service.
 """
 
-import asyncio
+import time
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, Request
@@ -161,13 +161,13 @@ async def log_requests(request: Request, call_next):
     Returns:
         Response: The response from the next handler
     """
-    start_time = asyncio.get_event_loop().time()
+    start_time = time.perf_counter()
     
     # Process the request
     response = await call_next(request)
     
     # Log request details
-    process_time = asyncio.get_event_loop().time() - start_time
+    process_time = time.perf_counter() - start_time
     logger.info(
         f"{request.method} {request.url.path} - "
         f"Status: {response.status_code} - "

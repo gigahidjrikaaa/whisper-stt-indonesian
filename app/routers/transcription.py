@@ -75,35 +75,17 @@ async def transcribe_audio(
     Raises:
         HTTPException: For various error conditions (400, 422, 500)
     """
-    try:
-        logger.info(f"Received transcription request for file: {audio_file.filename}")
-        
-        # Perform transcription using the service
-        result = await transcription_service.transcribe_audio(audio_file)
-        
-        logger.info(f"Transcription successful for file: {audio_file.filename}")
-        return result
-        
-    except FileValidationException as e:
-        logger.warning(f"File validation failed: {e.message}")
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail=e.message
-        )
-    
-    except TranscriptionException as e:
-        logger.error(f"Transcription failed: {e.message}")
-        raise HTTPException(
-            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
-            detail=e.message
-        )
-    
-    except Exception as e:
-        logger.error(f"Unexpected error in transcription endpoint: {str(e)}", exc_info=True)
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="An unexpected error occurred during transcription"
-        )
+    # With global exception handlers registered in main.py, this can be simplified.
+    # The handlers will catch FileValidationException, TranscriptionException,
+    # and any other unhandled exception, providing consistent error responses.
+    logger.info(f"Received transcription request for file: {audio_file.filename}")
+
+    # Perform transcription using the service. Any raised STTException
+    # will be handled by the stt_exception_handler.
+    result = await transcription_service.transcribe_audio(audio_file)
+
+    logger.info(f"Transcription successful for file: {audio_file.filename}")
+    return result
 
 
 @router.get(

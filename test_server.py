@@ -25,8 +25,21 @@ async def test_server():
     )
     server = uvicorn.Server(config)
     
-    # Start server
-    await server.serve()
+    # Start server in a background task
+    server_task = asyncio.create_task(server.serve())
+
+    # Give the server a moment to start up
+    await asyncio.sleep(2)
+    
+    print("✅ Server started. Running for 5 seconds...")
+    
+    # Let it run for a bit
+    await asyncio.sleep(5)
+    
+    # Stop the server
+    print("🛑 Stopping test server...")
+    server.should_exit = True
+    await server_task
 
 
 if __name__ == "__main__":

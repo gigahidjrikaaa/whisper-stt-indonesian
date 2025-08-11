@@ -1,5 +1,6 @@
 # Use NVIDIA CUDA base image with cuDNN for GPU support
-FROM nvidia/cuda:12.3.1-devel-ubuntu22.04
+FROM nvidia/cuda:12.9.1-cudnn-devel-ubuntu22.04
+
 
 # Set environment variables
 ENV PYTHONDONTWRITEBYTECODE=1 \

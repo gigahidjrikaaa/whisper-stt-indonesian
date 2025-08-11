@@ -6,6 +6,7 @@ ensuring it's loaded only once and providing thread-safe access for
 transcription operations.
 """
 
+import asyncio
 import threading
 from typing import Optional
 
@@ -147,8 +148,10 @@ async def initialize_model() -> None:
     
     This function should be called from FastAPI's startup event
     to ensure the model is loaded before the application starts
-    accepting requests.
+    accepting requests. It runs the blocking model loading in an
+    executor to avoid blocking the event loop.
     """
     logger.info("Initializing Whisper model...")
-    model_manager.load_model()
+    loop = asyncio.get_running_loop()
+    await loop.run_in_executor(None, model_manager.load_model)
     logger.info("Model initialization complete")

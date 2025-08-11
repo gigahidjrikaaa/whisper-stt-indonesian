@@ -49,9 +49,13 @@ async def lifespan(app: FastAPI):
     logger.info(f"Configuration: Device={settings.device}, Model={settings.model_size}")
     
     try:
-        # Initialize the Whisper model
-        await initialize_model()
-        logger.info("Application startup completed successfully")
+        # Initialize the Whisper model (configurable)
+        if settings.load_model_on_startup:
+            await initialize_model()
+            logger.info("Application startup completed successfully")
+        else:
+            logger.info("Skipping model load on startup (load_model_on_startup=False)")
+            logger.info("Application startup completed (model will load on first use)")
         
     except Exception as e:
         logger.error(f"Failed to initialize application: {str(e)}", exc_info=True)
@@ -74,7 +78,7 @@ app = FastAPI(
     * 🚀 **High Performance**: Optimized for GPU acceleration with CUDA
     * 🎯 **Accurate Transcription**: Uses OpenAI's Whisper model with faster-whisper optimizations
     * 🌐 **Multi-language Support**: Automatic language detection with confidence scores
-    * 📁 **Multiple Formats**: Supports MP3, WAV, M4A, FLAC, OGG, WMA, and AAC
+    * 📁 **Multiple Formats**: Supports MP3, WAV, M4A, MP4, FLAC, OGG, WMA, and AAC
     * ⚡ **Async Processing**: Non-blocking operations for high concurrency
     * 🔒 **Production Ready**: Comprehensive error handling and logging
     

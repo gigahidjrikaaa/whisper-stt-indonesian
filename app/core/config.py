@@ -9,7 +9,7 @@ all configuration values.
 import os
 from typing import Literal, Optional
 
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, Field, field_validator, model_validator
 from pydantic_settings import BaseSettings
 
 
@@ -35,11 +35,12 @@ class Settings(BaseSettings):
     model_size: str = Field(default="small", description="Whisper model size")
     device: Literal["cpu", "cuda"] = Field(default="cuda", description="Device for inference")
     compute_type: str = Field(default="float16", description="Compute type for inference")
+    load_model_on_startup: bool = Field(default=True, description="Load Whisper model during app startup")
     
     # File upload settings
     max_file_size_mb: int = Field(default=50, description="Maximum file size in MB")
     allowed_extensions: str = Field(
-        default="mp3,wav,m4a,flac,ogg,wma,aac",
+        default="mp3,wav,m4a,flac,ogg,wma,aac,mp4",
         description="Comma-separated string of allowed audio file extensions"
     )
     
@@ -73,6 +74,17 @@ class Settings(BaseSettings):
         if v not in allowed_types:
             raise ValueError(f"Compute type must be one of: {allowed_types}")
         return v
+
+    @model_validator(mode="after")
+    def normalize_compute_type_for_device(self):
+        """Normalize compute_type when running on CPU to avoid unsupported float16.
+
+        If `device` is `cpu` and `compute_type` is `float16` or `int8_float16`,
+        prefer `float32` which is broadly supported on CPU.
+        """
+        if self.device == "cpu" and self.compute_type in {"float16", "int8_float16"}:
+            object.__setattr__(self, "compute_type", "float32")
+        return self
     
     @field_validator("max_file_size_mb")
     @classmethod

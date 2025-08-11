@@ -10,6 +10,7 @@ services:
       - DEVICE=cuda
       - COMPUTE_TYPE=float16
       - LOG_LEVEL=INFO
+      - ALLOWED_EXTENSIONS=mp3,wav,m4a,flac,ogg,wma,aac,mp4
     volumes:
       - ./logs:/app/logs
     deploy:

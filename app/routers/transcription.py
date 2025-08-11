@@ -36,7 +36,7 @@ router = APIRouter(
     description="""
     Upload an audio file and receive a transcription with language detection.
     
-    **Supported formats:** MP3, WAV, M4A, FLAC, OGG, WMA, AAC
+    **Supported formats:** MP3, WAV, M4A, MP4, FLAC, OGG, WMA, AAC
     
     **Maximum file size:** 50MB (configurable)
     

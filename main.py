@@ -23,6 +23,7 @@ from app.core.exceptions import (
 from app.core.logging import get_logger, setup_logging
 from app.models.whisper import initialize_model
 from app.routers.transcription import router as transcription_router
+from app.routers.websocket import router as websocket_router
 
 # Initialize logging first
 setup_logging()
@@ -118,6 +119,7 @@ app.add_exception_handler(Exception, general_exception_handler)  # type: ignore
 
 # Include API routers
 app.include_router(transcription_router)
+app.include_router(websocket_router)
 
 
 @app.get("/", tags=["root"])

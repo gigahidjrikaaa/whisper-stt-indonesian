@@ -123,3 +123,13 @@ class HealthResponse(BaseModel):
             }
         }
     }
+
+
+class RealtimeTranscriptionResponse(BaseModel):
+    """
+    Response model for real-time transcription updates.
+    """
+    text: str
+    language: str
+    language_probability: float
+    processing_time_seconds: float

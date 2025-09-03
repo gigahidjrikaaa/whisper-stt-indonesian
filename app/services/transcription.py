@@ -18,7 +18,8 @@ from fastapi import UploadFile
 from ..core.config import get_settings
 from ..core.exceptions import FileValidationException, TranscriptionException
 from ..core.logging import get_logger
-from ..models.schemas import TranscriptionResponse
+import numpy as np
+from ..models.schemas import TranscriptionResponse, RealtimeTranscriptionResponse
 from ..models.whisper import get_model_manager
 
 logger = get_logger(__name__)
@@ -241,6 +242,65 @@ class TranscriptionService:
                 text_parts.append(segment.text.strip())
         
         return " ".join(text_parts)
+
+    async def transcribe_stream(self, audio_data: np.ndarray) -> RealtimeTranscriptionResponse:
+        """
+        Transcribe an audio stream from a NumPy array.
+
+        Args:
+            audio_data: NumPy array containing the audio data.
+
+        Returns:
+            RealtimeTranscriptionResponse: The transcription result.
+        """
+        start_time = time.time()
+        try:
+            loop = asyncio.get_running_loop()
+            segments, info = await loop.run_in_executor(
+                self._executor,
+                self._transcribe_stream,
+                audio_data
+            )
+
+            text = self._extract_text_from_segments(segments)
+            processing_time = time.time() - start_time
+
+            logger.info(f"Stream transcription completed in {processing_time:.2f}s")
+
+            return RealtimeTranscriptionResponse(
+                text=text,
+                language=info.language,
+                language_probability=info.language_probability,
+                processing_time_seconds=round(processing_time, 3)
+            )
+        except Exception as e:
+            logger.error(f"Unexpected error during stream transcription: {str(e)}", exc_info=True)
+            raise TranscriptionException(f"Stream transcription failed: {str(e)}")
+
+    def _transcribe_stream(self, audio_data: np.ndarray) -> Tuple:
+        """
+        Transcribe audio data from a NumPy array using the Whisper model.
+
+        Args:
+            audio_data: NumPy array of the audio.
+
+        Returns:
+            Tuple: (segments, info) from the Whisper model.
+        """
+        try:
+            model = self._model_manager.model
+            segments, info = model.transcribe(
+                audio=audio_data,
+                beam_size=self._settings.beam_size,
+                language=None,
+                word_timestamps=False,
+                vad_filter=True,
+                vad_parameters=dict(min_silence_duration_ms=500)
+            )
+            return list(segments), info
+        except Exception as e:
+            logger.error(f"Stream transcription failed: {str(e)}", exc_info=True)
+            raise TranscriptionException(f"Speech recognition failed: {str(e)}")
 
 
 # Global service instance

@@ -1,116 +1,234 @@
-# Whisper STT Indonesian
+# Whisper STT Indonesian API
 
-A high-performance Speech-to-Text (STT) API built with FastAPI and faster-whisper, optimized for CUDA GPU acceleration.
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+
+A high-performance, production-ready Speech-to-Text (STT) API for Indonesian and other languages, built with FastAPI and powered by `faster-whisper`.
+
+This API provides both file-based and real-time transcription capabilities, optimized for CUDA GPU acceleration.
+
+---
 
 ## Features
 
-- 🚀 High-performance async API with FastAPI
-- 🎯 GPU-accelerated inference with faster-whisper
-- 🔧 Modular, production-ready architecture
-- 📝 Comprehensive error handling and logging
-- 🌐 Support for multiple audio formats
-- 🔍 Language detection with confidence scores
-- ⚡ Non-blocking operations with thread pool execution
+- **🚀 High-Performance**: Asynchronous API built with FastAPI for high concurrency.
+- **🎯 Accurate & Fast**: GPU-accelerated transcription using `faster-whisper`, a highly optimized implementation of OpenAI's Whisper model.
+- **🌐 Real-time Transcription**: WebSocket endpoint for live audio streaming and transcription using Voice Activity Detection (VAD).
+- **📁 Multi-format Support**: Transcribe a wide variety of audio formats (MP3, WAV, M4A, FLAC, etc.).
+- **🔧 Production-Ready**: Features modular architecture, comprehensive logging, robust error handling, and configurable settings.
+- **🔍 Automatic Language Detection**: Automatically identifies the language of the audio with a confidence score.
 
-## Requirements
+---
 
-- Python 3.8+
-- CUDA-compatible GPU (recommended: RTX 3080 or better)
-- NVIDIA cuBLAS and cuDNN libraries
+## Architecture Overview
 
-## Installation
+The application is structured for clarity, scalability, and maintainability.
 
-1. Clone the repository:
-
-```bash
-git clone <repository-url>
-cd whisper-stt-indonesia
+```
+app/
+├── core/              # Core components: config, exceptions, logging
+├── models/            # Data models: Pydantic schemas and Whisper model manager
+├── routers/           # API endpoints: transcription and WebSocket routers
+└── services/          # Business logic for transcription
+main.py                # FastAPI application entry point
 ```
 
-2. Install dependencies:
+---
 
-```bash
-pip install -r requirements.txt
-```
 
-3. Install NVIDIA libraries for CUDA 12:
+## Getting Started
 
-```bash
-pip install nvidia-cublas-cu12 nvidia-cudnn-cu12==9.*
-```
+Follow these steps to set up and run the project locally.
 
-4. Set up environment variables (create `.env` file):
+### Prerequisites
 
-```bash
-MODEL_SIZE=small
-DEVICE=cuda
-COMPUTE_TYPE=float16
-LOG_LEVEL=INFO
-MAX_FILE_SIZE_MB=50
-```
+- **Python**: 3.8+ 
+- **NVIDIA GPU**: A CUDA-compatible GPU is highly recommended for good performance.
+- **NVIDIA CUDA Toolkit**: Ensure you have the CUDA Toolkit installed.
+- **FFmpeg**: Required for processing various audio formats. Install it via your system's package manager (e.g., `sudo apt install ffmpeg` or `choco install ffmpeg`).
 
-## Usage
+### Installation
 
-### Development
+1.  **Clone the repository:**
+    ```bash
+    git clone <repository-url>
+    cd whisper-stt-indonesia
+    ```
 
-```bash
-fastapi dev main.py
-```
+2.  **Create a virtual environment (recommended):**
+    ```bash
+    python -m venv .venv
+    source .venv/bin/activate  # On Windows: .venv\Scripts\activate
+    ```
 
-### Production
+3.  **Install dependencies:**
+    ```bash
+    pip install -r requirements.txt
+    ```
 
-```bash
-fastapi run main.py
-```
+4.  **Set up environment variables:**
+    Create a `.env` file in the project root by copying the example file:
+    ```bash
+    cp .env.example .env
+    ```
+    Modify the `.env` file as needed. See the [Configuration](#configuration) section for details.
 
-## API Endpoints
+### Running the Application
 
-### POST /transcribe
+-   **For development (with auto-reload):**
+    ```bash
+    fastapi dev main.py
+    ```
+
+-   **For production:**
+    ```bash
+    uvicorn main:app --host 0.0.0.0 --port 8000
+    ```
+
+The API will be available at `http://localhost:8000`.
+
+---
+
+## API Reference
+
+The API exposes three main endpoints.
+
+### 1. File-Based Transcription
+
+**`POST /api/v1/transcribe`**
 
 Upload an audio file for transcription.
 
 **Request:**
 
-- Content-Type: `multipart/form-data`
-- Field: `audio_file` (audio file)
+-   **Method**: `POST`
+-   **URL**: `/api/v1/transcribe`
+-   **Body**: `multipart/form-data` with a single field:
+    -   `audio_file`: The audio file to be transcribed.
 
-**Response:**
-
-```json
-{
-  "text": "Transcribed text content",
-  "language": "id",
-  "language_probability": 0.95,
-  "processing_time_seconds": 2.34
-}
-```
-
-**Error Response:**
-
-```json
-{
-  "detail": "Error message"
-}
-```
-
-## Architecture
-
+**Example Request (cURL):**
 ```bash
-app/
-├── core/
-│   ├── config.py          # Configuration and settings
-│   ├── exceptions.py      # Custom exception handlers
-│   └── logging.py         # Logging configuration
-├── models/
-│   ├── whisper.py         # Whisper model management
-│   └── schemas.py         # Pydantic response models
-├── routers/
-│   └── transcription.py   # Transcription API endpoints
-└── services/
-    └── transcription.py    # Business logic for transcription
-main.py                     # FastAPI application entry point
+curl -X POST "http://localhost:8000/api/v1/transcribe" \
+     -H "Content-Type: multipart/form-data" \
+     -F "audio_file=@/path/to/your/audio.mp3"
 ```
+
+**Success Response (200 OK):**
+
+A JSON object with the transcription details.
+```json
+{
+  "text": "Halo, ini adalah contoh transkripsi bahasa Indonesia.",
+  "language": "id",
+  "language_probability": 0.98,
+  "processing_time_seconds": 1.85
+}
+```
+
+**Error Responses:**
+
+-   **400 Bad Request** (`FileValidationException`): If the file is invalid (e.g., wrong format, no file uploaded).
+    ```json
+    {
+      "detail": "File extension 'txt' not allowed. Supported formats: mp3, wav, m4a, ..."
+    }
+    ```
+-   **422 Unprocessable Entity** (`TranscriptionException`): If the transcription process fails for a specific reason.
+    ```json
+    {
+      "detail": "Speech recognition failed: ..."
+    }
+    ```
+-   **500 Internal Server Error**: For unexpected server-side errors.
+    ```json
+    {
+      "detail": "An internal server error occurred. Please try again later."
+    }
+    ```
+
+### 2. Real-time Transcription (WebSocket)
+
+**`WS /ws/transcribe`**
+
+Stream audio in real-time and receive transcriptions.
+
+**Connection URL:**
+```
+ws://localhost:8000/ws/transcribe
+```
+
+**Client-to-Server Messages:**
+
+The client must send raw audio data in binary frames.
+
+-   **Audio Format**: 16-bit signed integer PCM
+-   **Sample Rate**: 16000 Hz
+-   **Channels**: 1 (mono)
+-   **Frame Size**: For best results with the built-in VAD, send audio in **30ms** chunks (960 bytes per frame).
+
+**Server-to-Client Messages:**
+
+The server sends JSON objects back to the client.
+
+-   **Successful Transcription:**
+    ```json
+    {
+      "text": "ini adalah tes transkripsi real time",
+      "language": "id",
+      "language_probability": 0.99,
+      "processing_time_seconds": 0.45
+    }
+    ```
+-   **Error Message:**
+    ```json
+    {
+      "error": "Stream transcription failed: ..."
+    }
+    ```
+
+**Python Client Example:**
+
+See the example in `README.md` for a detailed client implementation using `pyaudio` and `websockets`.
+
+### 3. Health Check
+
+**`GET /api/v1/health`**
+
+Check the health and status of the API and the Whisper model.
+
+**Success Response (200 OK):**
+```json
+{
+  "status": "healthy",
+  "version": "1.0.0",
+  "model_loaded": true,
+  "device": "cuda",
+  "model_size": "small"
+}
+```
+
+---
+
+## Configuration
+
+All settings are managed via environment variables (or a `.env` file).
+
+| Variable                | Description                                                                 | Default     | Example         |
+| ----------------------- | --------------------------------------------------------------------------- | ----------- | --------------- |
+| `APP_NAME`              | The name of the application.                                                | `Whisper STT` |                 |
+| `APP_VERSION`           | The version of the application.                                             | `1.0.0`     |                 |
+| `HOST`                  | The host address to bind the server to.                                     | `0.0.0.0`   |                 |
+| `PORT`                  | The port to run the server on.                                              | `8000`      |                 |
+| `DEBUG`                 | Whether to run in debug mode (enables auto-reload).                         | `False`     | `True`          |
+| `LOG_LEVEL`             | The logging level.                                                          | `INFO`      | `DEBUG`         |
+| `MODEL_SIZE`            | The Whisper model size to use.                                              | `small`     | `medium`, `large-v2` |
+| `DEVICE`                | The device to run inference on.                                             | `auto`      | `cuda`, `cpu`   |
+| `COMPUTE_TYPE`          | The computation type for the model.                                         | `default`   | `float16`, `int8` |
+| `MAX_FILE_SIZE_MB`      | The maximum allowed file size for uploads.                                  | `50`        | `100`           |
+| `ALLOWED_EXTENSIONS`    | Comma-separated list of allowed audio file extensions.                      | `...`       |                 |
+| `LOAD_MODEL_ON_STARTUP` | Whether to load the model on application startup.                           | `True`      | `False`         |
+
+---
 
 ## License
 
-MIT License
+This project is licensed under the **MIT License**. See the [LICENSE](LICENSE) file for details.

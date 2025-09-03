@@ -34,11 +34,14 @@ class TranscriptionService:
     using the faster-whisper model.
     """
     
-    def __init__(self):
+    def __init__(self, use_thread_pool: bool = True):
         """Initialize the transcription service."""
         self._settings = get_settings()
         self._model_manager = get_model_manager()
-        self._executor = ThreadPoolExecutor(max_workers=self._settings.max_workers)
+        if use_thread_pool:
+            self._executor = ThreadPoolExecutor(max_workers=self._settings.max_workers)
+        else:
+            self._executor = None
     
     async def transcribe_audio(self, audio_file: UploadFile) -> TranscriptionResponse:
         """
@@ -242,6 +245,93 @@ class TranscriptionService:
                 text_parts.append(segment.text.strip())
         
         return " ".join(text_parts)
+
+    def transcribe_file_from_path(self, file_path: str) -> dict:
+        """
+        Synchronously transcribe an audio file from a given path.
+
+        Args:
+            file_path: The absolute path to the audio file.
+
+        Returns:
+            A dictionary containing the transcription result.
+        """
+        start_time = time.time()
+        logger.info(f"Starting synchronous transcription for file: {file_path}")
+
+        try:
+            segments, info = self._transcribe_file(file_path)
+            text = self._extract_text_from_segments(segments)
+            processing_time = time.time() - start_time
+
+            logger.info(f"File transcription completed in {processing_time:.2f}s")
+
+            return {
+                "text": text,
+                "language": info.language,
+                "language_probability": info.language_probability,
+                "processing_time_seconds": round(processing_time, 3)
+            }
+        except Exception as e:
+            logger.error(f"Unexpected error during file transcription: {str(e)}", exc_info=True)
+            # Re-raise the exception to let RQ mark the job as failed
+            raise
+
+    def transcribe_batch(self, file_paths: list[str]) -> list[dict]:
+        """
+        Synchronously transcribe a batch of audio files.
+
+        Args:
+            file_paths: A list of absolute paths to the audio files.
+
+        Returns:
+            A list of dictionaries, each containing the transcription result for a file.
+        """
+        start_time = time.time()
+        logger.info(f"Starting batch transcription for {len(file_paths)} files.")
+
+        try:
+            results = []
+            segments_batch, infos_batch = self._transcribe_batch(file_paths)
+
+            for segments, info in zip(segments_batch, infos_batch):
+                text = self._extract_text_from_segments(segments)
+                results.append({
+                    "text": text,
+                    "language": info.language,
+                    "language_probability": info.language_probability,
+                })
+
+            processing_time = time.time() - start_time
+            logger.info(f"Batch transcription completed in {processing_time:.2f}s")
+            return results
+
+        except Exception as e:
+            logger.error(f"Unexpected error during batch transcription: {str(e)}", exc_info=True)
+            raise
+
+    def _transcribe_batch(self, file_paths: list[str]) -> tuple[list, list]:
+        """
+        Transcribe a batch of audio files using the Whisper model.
+        """
+        try:
+            model = self._model_manager.model
+            
+            # faster-whisper can take a list of file paths directly
+            segments_generator, infos_generator = model.transcribe(
+                audio=file_paths,
+                beam_size=self._settings.beam_size,
+                language=None,
+                word_timestamps=False,
+                vad_filter=True,
+                vad_parameters=dict(min_silence_duration_ms=500)
+            )
+            
+            return list(segments_generator), list(infos_generator)
+            
+        except Exception as e:
+            logger.error(f"Batch transcription failed: {str(e)}", exc_info=True)
+            raise TranscriptionException(f"Speech recognition failed during batch processing: {str(e)}")
 
     async def transcribe_stream(self, audio_data: np.ndarray) -> RealtimeTranscriptionResponse:
         """

@@ -1,181 +1,119 @@
 """
-API routes for audio transcription.
-
-This module defines the FastAPI routes for handling transcription requests,
-including file upload endpoints and health checks.
+API routes for audio transcription, supporting both synchronous and asynchronous processing.
 """
 
-from fastapi import APIRouter, Depends, File, HTTPException, UploadFile, status
+import os
+import shutil
+import uuid
+rom fastapi import APIRouter, Depends, File, HTTPException, UploadFile, status
+from rq.job import Job
 
 from ..core.config import get_settings
-from ..core.exceptions import FileValidationException, TranscriptionException
+from ..core.exceptions import FileValidationException
 from ..core.logging import get_logger
-from ..models.schemas import ErrorResponse, HealthResponse, TranscriptionResponse
+from ..core.queue import get_queue, get_redis_connection
+from ..models.schemas import (
+    ErrorResponse, HealthResponse, JobStatusResponse, JobSubmitResponse, TranscriptionResponse
+)
 from ..models.whisper import get_model_manager
 from ..services.transcription import TranscriptionService, get_transcription_service
+from worker import transcribe_job
 
 logger = get_logger(__name__)
 
-# Create router for transcription endpoints
+# Create router
 router = APIRouter(
     prefix="/api/v1",
     tags=["transcription"],
     responses={
-        400: {"model": ErrorResponse, "description": "Bad Request"},
-        422: {"model": ErrorResponse, "description": "Unprocessable Entity"},
+        404: {"description": "Not found"},
         500: {"model": ErrorResponse, "description": "Internal Server Error"},
     }
 )
 
+SHARED_AUDIO_PATH = "/app/shared_audio"
+
+async def _save_upload_file(upload_file: UploadFile) -> str:
+    """
+    Save an uploaded file to the shared audio directory.
+    """
+    if not upload_file.filename:
+        raise FileValidationException("No file was uploaded")
+
+    # Basic validation
+    # You might want to expand this based on the service validation logic
+    settings = get_settings()
+    file_extension = upload_file.filename.lower().split('.')[-1]
+    if file_extension not in settings.parsed_allowed_extensions:
+        raise FileValidationException(f"File extension '{file_extension}' not allowed.")
+
+    # Create a unique filename and save the file
+    if not os.path.exists(SHARED_AUDIO_PATH):
+        os.makedirs(SHARED_AUDIO_PATH)
+    
+    unique_filename = f"{uuid.uuid4()}.{file_extension}"
+    file_path = os.path.join(SHARED_AUDIO_PATH, unique_filename)
+    
+    try:
+        with open(file_path, "wb") as buffer:
+            shutil.copyfileobj(upload_file.file, buffer)
+        logger.info(f"Saved uploaded file to: {file_path}")
+        return file_path
+    except Exception as e:
+        logger.error(f"Failed to save file: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail="Failed to save uploaded file.")
 
 @router.post(
     "/transcribe",
-    response_model=TranscriptionResponse,
-    status_code=status.HTTP_200_OK,
-    summary="Transcribe audio file",
-    description="""
-    Upload an audio file and receive a transcription with language detection.
-    
-    **Supported formats:** MP3, WAV, M4A, MP4, FLAC, OGG, WMA, AAC
-    
-    **Maximum file size:** 50MB (configurable)
-    
-    The transcription service uses OpenAI's Whisper model optimized with 
-    faster-whisper for improved performance and GPU acceleration.
-    
-    **Features:**
-    - Automatic language detection
-    - High accuracy speech recognition
-    - Processing time measurement
-    - Voice activity detection (VAD) filtering
-    """
+    response_model=JobSubmitResponse,
+    status_code=status.HTTP_202_ACCEPTED,
+    summary="Submit an audio file for transcription",
+    description="Submit an audio file to the asynchronous transcription queue."
 )
-async def transcribe_audio(
-    audio_file: UploadFile = File(
-        ...,
-        description="Audio file to transcribe",
-        media_type="audio/*"
-    ),
-    transcription_service: TranscriptionService = Depends(get_transcription_service)
-) -> TranscriptionResponse:
-    """
-    Transcribe an uploaded audio file to text.
+async def submit_transcription_job(
+    audio_file: UploadFile = File(..., description="Audio file to transcribe"),
+    queue = Depends(get_queue)
+) -> JobSubmitResponse:
+    file_path = await _save_upload_file(audio_file)
     
-    This endpoint accepts audio files in various formats and returns
-    the transcribed text along with detected language and processing
-    time information.
+    # Enqueue the job
+    job = queue.enqueue(transcribe_job, file_path, result_ttl=3600) # Keep result for 1 hour
+    logger.info(f"Enqueued job {job.id} for file: {file_path}")
     
-    Args:
-        audio_file: The uploaded audio file
-        transcription_service: Injected transcription service
-        
-    Returns:
-        TranscriptionResponse: Transcription results with metadata
-        
-    Raises:
-        HTTPException: For various error conditions (400, 422, 500)
-    """
-    # With global exception handlers registered in main.py, this can be simplified.
-    # The handlers will catch FileValidationException, TranscriptionException,
-    # and any other unhandled exception, providing consistent error responses.
-    logger.info(f"Received transcription request for file: {audio_file.filename}")
+    return JobSubmitResponse(job_id=job.id)
 
-    # Perform transcription using the service. Any raised STTException
-    # will be handled by the stt_exception_handler.
-    result = await transcription_service.transcribe_audio(audio_file)
+@router.get("/jobs/{job_id}", response_model=JobStatusResponse, summary="Check job status")
+async def get_job_status(job_id: str) -> JobStatusResponse:
+    try:
+        job = Job.fetch(job_id, connection=get_redis_connection())
+    except Exception:
+        raise HTTPException(status_code=404, detail="Job not found.")
 
-    logger.info(f"Transcription successful for file: {audio_file.filename}")
-    return result
+    status = job.get_status()
+    result = None
+    if status == 'finished':
+        result_data = job.result
+        if result_data:
+            result = TranscriptionResponse(**result_data)
 
+    return JobStatusResponse(job_id=job.id, status=status, result=result)
 
 @router.get(
     "/health",
     response_model=HealthResponse,
     status_code=status.HTTP_200_OK,
     summary="Health check",
-    description="""
-    Check the health status of the transcription service.
-    
-    This endpoint provides information about:
-    - Service availability
-    - Model loading status
-    - Current configuration
-    - Version information
-    
-    Use this endpoint to verify that the service is ready to accept
-    transcription requests.
-    """
 )
 async def health_check(
     model_manager = Depends(get_model_manager),
     settings = Depends(get_settings)
 ) -> HealthResponse:
-    """
-    Get the health status of the transcription service.
+    is_healthy = model_manager.is_loaded
+    status_text = "healthy" if is_healthy else "model_not_loaded"
     
-    This endpoint provides a quick way to check if the service
-    is operational and ready to process transcription requests.
-    
-    Args:
-        model_manager: Injected model manager
-        settings: Injected application settings
-        
-    Returns:
-        HealthResponse: Service health information
-    """
-    try:
-        is_healthy = model_manager.is_loaded
-        status_text = "healthy" if is_healthy else "model_not_loaded"
-        
-        return HealthResponse(
-            status=status_text,
-            version=settings.app_version,
-            model_loaded=model_manager.is_loaded,
-            device=settings.device
-        )
-        
-    except Exception as e:
-        logger.error(f"Health check failed: {str(e)}", exc_info=True)
-        
-        return HealthResponse(
-            status="unhealthy",
-            version=settings.app_version,
-            model_loaded=False,
-            device=settings.device
-        )
-
-
-@router.get(
-    "/model-info",
-    summary="Get model information",
-    description="""
-    Get detailed information about the loaded Whisper model.
-    
-    This endpoint provides technical details about the current
-    model configuration, including:
-    - Model size and type
-    - Device (CPU/CUDA)
-    - Compute type (float16/int8/etc.)
-    - Loading status
-    """
-)
-async def get_model_info(
-    model_manager = Depends(get_model_manager)
-) -> dict:
-    """
-    Get information about the loaded Whisper model.
-    
-    Args:
-        model_manager: Injected model manager
-        
-    Returns:
-        dict: Model configuration and status information
-    """
-    try:
-        return model_manager.get_model_info()
-    except Exception as e:
-        logger.error(f"Failed to get model info: {str(e)}", exc_info=True)
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Failed to retrieve model information"
-        )
+    return HealthResponse(
+        status=status_text,
+        version=settings.app_version,
+        model_loaded=model_manager.is_loaded,
+        device=settings.device
+    )

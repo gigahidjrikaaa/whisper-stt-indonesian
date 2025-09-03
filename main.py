@@ -7,6 +7,7 @@ It serves as the production-ready entry point for the STT service.
 """
 
 import time
+import shutil
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, Request
@@ -32,6 +33,14 @@ logger = get_logger(__name__)
 # Get application settings
 settings = get_settings()
 
+def check_ffmpeg():
+    """Check if FFmpeg executable is available in the system's PATH."""
+    if not shutil.which("ffmpeg"):
+        logger.critical("FFmpeg not found. Please install FFmpeg and ensure it is in your PATH.")
+        raise RuntimeError("FFmpeg not found. The application cannot start.")
+    logger.info("FFmpeg found, proceeding with application startup.")
+
+
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -46,6 +55,7 @@ async def lifespan(app: FastAPI):
         app: The FastAPI application instance
     """
     # Startup
+    check_ffmpeg() # Ensure FFmpeg is available for audio processing
     logger.info(f"Starting {settings.app_name} v{settings.app_version}")
     logger.info(f"Configuration: Device={settings.device}, Model={settings.model_size}")
     

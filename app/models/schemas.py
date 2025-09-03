@@ -133,3 +133,19 @@ class RealtimeTranscriptionResponse(BaseModel):
     language: str
     language_probability: float
     processing_time_seconds: float
+
+
+class JobSubmitResponse(BaseModel):
+    """
+    Response model for a successfully submitted transcription job.
+    """
+    job_id: str = Field(..., description="The unique ID for the transcription job.")
+
+
+class JobStatusResponse(BaseModel):
+    """
+    Response model for checking the status of a job.
+    """
+    job_id: str = Field(..., description="The unique ID for the transcription job.")
+    status: str = Field(..., description="The current status of the job (e.g., queued, started, finished, failed).")
+    result: Optional[TranscriptionResponse] = Field(None, description="The transcription result, available if the job is finished.")

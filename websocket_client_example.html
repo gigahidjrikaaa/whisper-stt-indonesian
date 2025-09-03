@@ -1,0 +1,110 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Whisper Real-time Transcription</title>
+    <style>
+        body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; margin: 0; display: flex; justify-content: center; align-items: center; height: 100vh; background-color: #f0f2f5; }
+        .container { text-align: center; background: white; padding: 40px; border-radius: 12px; box-shadow: 0 4px 20px rgba(0,0,0,0.1); }
+        h1 { color: #333; }
+        #status { margin: 20px 0; font-size: 1.1em; color: #555; }
+        #transcript { margin-top: 20px; padding: 15px; border: 1px solid #ddd; border-radius: 8px; min-height: 100px; text-align: left; background-color: #fafafa; }
+        button { background-color: #007bff; color: white; border: none; padding: 15px 30px; font-size: 1em; border-radius: 8px; cursor: pointer; transition: background-color 0.3s; }
+        button.recording { background-color: #dc3545; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>Real-time Audio Transcription</h1>
+        <p>Click "Start Recording" and speak into your microphone.</p>
+        <button id="recordButton">Start Recording</button>
+        <div id="status">Status: Idle</div>
+        <h2>Transcript:</h2>
+        <div id="transcript"></div>
+    </div>
+
+    <script>
+        const recordButton = document.getElementById('recordButton');
+        const statusDiv = document.getElementById('status');
+        const transcriptDiv = document.getElementById('transcript');
+
+        let socket;
+        let mediaRecorder;
+        let isRecording = false;
+
+        const WEBSOCKET_URL = `ws://${window.location.host}/ws/transcribe`;
+
+        recordButton.addEventListener('click', async () => {
+            if (isRecording) {
+                stopRecording();
+            } else {
+                await startRecording();
+            }
+        });
+
+        async function startRecording() {
+            try {
+                const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+                
+                socket = new WebSocket(WEBSOCKET_URL);
+
+                socket.onopen = () => {
+                    console.log("WebSocket connection established.");
+                    statusDiv.textContent = "Status: Connected. Recording...";
+                    recordButton.textContent = "Stop Recording";
+                    recordButton.classList.add('recording');
+                    isRecording = true;
+
+                    mediaRecorder = new MediaRecorder(stream, { mimeType: 'audio/webm; codecs=opus' });
+
+                    mediaRecorder.ondataavailable = (event) => {
+                        if (event.data.size > 0 && socket.readyState === WebSocket.OPEN) {
+                            socket.send(event.data);
+                        }
+                    };
+
+                    mediaRecorder.start(1000); // Send data every 1 second
+                };
+
+                socket.onmessage = (event) => {
+                    const response = JSON.parse(event.data);
+                    if (response.text) {
+                        transcriptDiv.innerHTML += `<p>${response.text}</p>`;
+                    }
+                    console.log("Received:", response);
+                };
+
+                socket.onclose = () => {
+                    console.log("WebSocket connection closed.");
+                    stopRecording();
+                };
+
+                socket.onerror = (error) => {
+                    console.error("WebSocket error:", error);
+                    statusDiv.textContent = "Status: Error. See console for details.";
+                    stopRecording();
+                };
+
+            } catch (error) {
+                console.error("Error starting recording:", error);
+                statusDiv.textContent = "Status: Could not start recording. Please grant microphone permission.";
+            }
+        }
+
+        function stopRecording() {
+            if (mediaRecorder && mediaRecorder.state === 'recording') {
+                mediaRecorder.stop();
+            }
+            if (socket && socket.readyState === WebSocket.OPEN) {
+                socket.close();
+            }
+            
+            recordButton.textContent = "Start Recording";
+            recordButton.classList.remove('recording');
+            statusDiv.textContent = "Status: Idle";
+            isRecording = false;
+        }
+    </script>
+</body>
+</html>

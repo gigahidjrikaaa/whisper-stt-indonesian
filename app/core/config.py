@@ -54,6 +54,10 @@ class Settings(BaseSettings):
         default="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
         description="Log format string"
     )
+
+    # Batch worker settings
+    batch_size: int = Field(default=8, description="Number of jobs to process in a batch")
+    batch_timeout: int = Field(default=5, description="Seconds to wait for more jobs before processing a batch")
     
 
 

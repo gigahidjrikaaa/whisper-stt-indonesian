@@ -1,11 +1,22 @@
 version: '3.8'
 
+volumes:
+  audio-data:
+
 services:
-  whisper-stt:
+  redis:
+    image: redis:alpine
+    ports:
+      - "6379:6379"
+    restart: unless-stopped
+
+  api:
     build: .
     ports:
       - "8000:8000"
     environment:
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
       - MODEL_SIZE=small
       - DEVICE=cuda
       - COMPUTE_TYPE=float16
@@ -13,6 +24,9 @@ services:
       - ALLOWED_EXTENSIONS=mp3,wav,m4a,flac,ogg,wma,aac,mp4
     volumes:
       - ./logs:/app/logs
+      - audio-data:/app/shared_audio
+    depends_on:
+      - redis
     deploy:
       resources:
         reservations:
@@ -27,3 +41,27 @@ services:
       timeout: 10s
       retries: 3
       start_period: 60s
+
+  worker:
+    build: .
+    command: python batch_worker.py
+    environment:
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+      - MODEL_SIZE=small
+      - DEVICE=cuda
+      - COMPUTE_TYPE=float16
+      - LOG_LEVEL=INFO
+    volumes:
+      - ./logs:/app/logs
+      - audio-data:/app/shared_audio
+    depends_on:
+      - redis
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]
+    restart: unless-stopped

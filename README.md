@@ -92,56 +92,59 @@ The API will be available at `http://localhost:8000`.
 
 The API exposes three main endpoints.
 
-### 1. File-Based Transcription
+### 1. Asynchronous File Transcription
+
+This workflow allows you to submit a file for transcription and check the results later. This is ideal for processing large files without blocking the client.
+
+**Workflow:**
+1.  **POST** to `/api/v1/transcribe` to submit your audio file. You will receive a `job_id`.
+2.  **GET** from `/api/v1/jobs/{job_id}` periodically to check the status.
+3.  Once the status is `finished`, the result will be included in the response.
 
 **`POST /api/v1/transcribe`**
 
-Upload an audio file for transcription.
+Submits an audio file to the transcription queue.
 
-**Request:**
-
--   **Method**: `POST`
--   **URL**: `/api/v1/transcribe`
--   **Body**: `multipart/form-data` with a single field:
-    -   `audio_file`: The audio file to be transcribed.
-
-**Example Request (cURL):**
-```bash
-curl -X POST "http://localhost:8000/api/v1/transcribe" \
-     -H "Content-Type: multipart/form-data" \
-     -F "audio_file=@/path/to/your/audio.mp3"
-```
-
-**Success Response (200 OK):**
-
-A JSON object with the transcription details.
-```json
-{
-  "text": "Halo, ini adalah contoh transkripsi bahasa Indonesia.",
-  "language": "id",
-  "language_probability": 0.98,
-  "processing_time_seconds": 1.85
-}
-```
-
-**Error Responses:**
-
--   **400 Bad Request** (`FileValidationException`): If the file is invalid (e.g., wrong format, no file uploaded).
+-   **Success Response (202 Accepted):**
     ```json
     {
-      "detail": "File extension 'txt' not allowed. Supported formats: mp3, wav, m4a, ..."
+      "job_id": "a1b2c3d4-e5f6-7890-1234-567890abcdef"
     }
     ```
--   **422 Unprocessable Entity** (`TranscriptionException`): If the transcription process fails for a specific reason.
+
+**`GET /api/v1/jobs/{job_id}`**
+
+Retrieves the status and result of a transcription job.
+
+-   **Response (Job Queued):**
     ```json
     {
-      "detail": "Speech recognition failed: ..."
+      "job_id": "a1b2c3d4-e5f6-7890-1234-567890abcdef",
+      "status": "queued",
+      "result": null
     }
     ```
--   **500 Internal Server Error**: For unexpected server-side errors.
+
+-   **Response (Job Finished):**
     ```json
     {
-      "detail": "An internal server error occurred. Please try again later."
+      "job_id": "a1b2c3d4-e5f6-7890-1234-567890abcdef",
+      "status": "finished",
+      "result": {
+        "text": "Halo, ini adalah contoh transkripsi.",
+        "language": "id",
+        "language_probability": 0.98,
+        "processing_time_seconds": 5.43
+      }
+    }
+    ```
+
+-   **Response (Job Failed):**
+    ```json
+    {
+      "job_id": "a1b2c3d4-e5f6-7890-1234-567890abcdef",
+      "status": "failed",
+      "result": null
     }
     ```
 
